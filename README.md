@@ -1,1 +1,1 @@
-# some game theoretical experiments I performed
+# some game theoretical experiments that I performed
