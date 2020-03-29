@@ -1,0 +1,199 @@
+---
+title: "EPA1315: Agent Based Prisoner's Dilemma Challenge"
+author: "K. H. Kreulen [4695380] & M.G. Valies [4618289]"
+date: "October 2, 2018"
+output:
+  pdf_document: default
+  word_document: default
+  html_document: default
+---
+
+This assignment was part of the 2018/19 Data Analysis and Visualization course (EPA1315) at the Delft University of Technology. The goal of the assignment was to develop a software agent that participates in a prisoner's dilemma tournament against agents developed by fellow students. 
+
+The mission of the agent was to strategically asses what is the best option when encountering another agent; cooperate or defect. Depending on choices made by both agents, points will be allocated to each of them according to the pay-off matrix that defines a prisoner's dilemma. 
+
+This document explains, in a step by step manner, the code that underlies the strategic behavior of our software agent. 
+
+During the development of our code, we had to first create some variables that could be used to test the response of our agent. As can be seen below, we manipulated response, book, opponent_id and own_id in order to test our code:
+
+```{r}
+response <- "NoLemon"
+book = read.csv("tournament.csv", header = TRUE, sep = ",") 
+opponent_id <- 10
+own_id <- 1
+```
+
+## The get_bid Function
+
+This parts dicusses the main layer of our strategy, which is encapsulated in the 'get_bid' function. Firstly, we will create easy to use variable names:
+
+```{r}
+get_bid = function(){
+ #set easy to work with local variable names
+ own_id <- self$id
+ opponent_id <- self$opponent_id
+ book <- self$book
+}
+```
+
+The professor added four agents to the participating agent population. These agents greet by exclaiming "Lemon!." and will always defect. In order to obtain the maximum points in this situation, our agent will therefore always defect when greeted by "Lemon!.". This forms the first part of our code as presented below:
+
+```{r}
+get_bid = function(book,id,opponent_id,response){
+  own_id <- id
+  if (response == "Lemon!."){
+    bid = "defect"
+  }
+}
+```
+
+If the encountered agent does not greet us by exclaiming "Lemon!.", our agent will check its identification number and consult if there is any past tournament information available concerning this agent. If not, our agent will be kind and "cooperate" with this agent. Adding this strategy to the initial code results in the code presented below:
+
+```{r}
+get_bid = function(book,id,opponent_id,response){
+  own_id <- id
+  if (response == "Lemon!."){
+    bid = "defect"
+  } else if ((opponent_id %in% book$id1 | opponent_id %in% book$id2) == FALSE){  
+    bid = "cooperate"
+  }
+}
+```
+
+In the situation where information of the opponent is available, our agent will check if we already met this agent before. If this is the case, we will execute a 'tit-for-tat' strategy by calling the 'titfortat' function (we will adress the workings of this function at a later stage). If it is NOT the case that we met the agent before, we will call the 'opponent_behavior' function that will provide us with a bid that is based on information of the past behaviors of our opponent (we will adress the workings of this function at a later stage). 
+
+```{r}
+get_bid = function(book,id,opponent_id,response){
+  own_id <- id
+  if (response == "Lemon!."){    
+    bid = "defect"
+  } else if ((opponent_id %in% book$id1 | opponent_id %in% book$id2) == FALSE){
+    bid = "cooperate"
+  } else if (nrow(subset(book, (id1 == own_id | id1 == opponent_id) & (id2 ==own_id | id2 == opponent_id))) != 0){
+    #Tit-for-Tat function
+    bid = titfortat(book,own_id,opponent_id)
+  } else {
+    #Opponent behavior function
+    bid = opponent_behavior(book,opponent_id)
+  }
+  return(bid)
+}
+```
+
+This closes the top layer of our agent's strategy. Subsequently, if opponent agent's tournament history has been identified. More specific strategies can be applied. Our selection is discussed in the next section.
+
+## Tit-for-Tat Strategy
+
+Our agent implements a variation of the Tit-for-Tat strategy. The function executing this strategy is shown below:
+
+```{r}
+titfortat = function(book,own_id,opponent_id){
+  #set easy to work with local variable names
+  own_id <- id
+  
+  #determine the opponent's bids all the previous times we interacted
+  result1 = book[(book$id1==opponent_id & book$id2==own_id),c("round","bid1")]
+  result2 = book[(book$id1==own_id & book$id2==opponent_id),c("round","bid2")]
+  
+  #determine our own bids all the previous times we interacted
+  result3 = book[(book$id1==own_id & book$id2==opponent_id),c("round","bid1")]
+  result4 = book[(book$id1==opponent_id & book$id2==own_id),c("round","bid2")]
+  
+  #change the names of bid1 and bid2 into bid
+  names(result1) = c("round","bid")
+  names(result2) = c("round","bid")
+  names(result3) = c("round","bid")
+  names(result4) = c("round","bid")
+  
+  #create two tables: one with all of our opponent's bids, and one with all of our own
+  all_opponent_bids = rbind(result1,result2)
+  all_own_bids = rbind(result3,result4)
+  
+  #look for the last bids in each of the tables
+  round_opponent_bids = all_opponent_bids$round 
+  round_own_bids = all_own_bids$round
+  latest_round_opponent_bids = max(round_opponent_bids)
+  latest_round_own_bids = max(round_own_bids)
+  
+  #save the last bids in variables
+  opponent_last_bid = all_opponent_bids[all_opponent_bids$round==latest_round_opponent_bids,"bid"]
+  own_last_bid = all_own_bids[all_own_bids$round==latest_round_own_bids,"bid"]
+  
+  #execute strategy
+  if(opponent_last_bid=="defect"){
+    #insert randomness: in 5% of all cases we incur a defect, we are forgiving (i.e. we return a 'cooperate' instead of a 'defect')
+    if (runif(1)<0.05){ 
+      bid="cooperate"
+    } else {
+      bid="defect"
+    }
+  } else {
+    bid="cooperate"
+  }
+  return(bid)
+}
+```
+
+The function takes as inputs the tournament book (dataframe), our own ID and the ID of our direct opponent. Using these inputs, the function then creates a set of variables that encapsulate information regarding our own and our direct opponent's bidding behavior in all of the previous rounds wherein we interacted with one another.
+
+In doing so, the function creates a convenient data structure that can be used to determine both our own and our opponent's bid in the preceding round. These are referred to as 'opponent_last_bid' and 'own_last_bid'. These variables are then used to execute the tit-for-tat strategy; which holds that we imitate our opponents PREVIOUS bid in the CURRENT round. We added a slight variation to the conventional tit-for-tat strategy by including a statement that will make our agent randomly react to opponent defects by cooperating (i.e. by forgiving the opponent). This is done in the hope that our opponent will registrate our willingness to cooperate, and consequently cooperate with us the next time we meet one another.
+
+## Analyzing Opponent Behavior
+
+If we have never encountered the opponent before but the opponent has played against other agents in the tournament before, our own agent implements a strategy based on previous opponent's behavior as presented below:
+
+```{r}
+opponent_behavior = function(book,opponent_id){
+  #determine the opponent's history of actions
+  opponent_history <- subset(book, (id1 == opponent_id | id2 == opponent_id))
+  
+  #create variables that can be used to determine the number of times opponent has cooperated or defected in previous rounds
+  coop_bid1 = nrow(subset(opponent_history,(id1 == opponent_id) & (bid1=="cooperate")))
+  coop_bid2 = nrow(subset(opponent_history,(id2 == opponent_id) & (bid2=="cooperate")))
+  defect_bid1 = nrow(subset(opponent_history,(id1 == opponent_id) & (bid1=="defect")))
+  defect_bid2 = nrow(subset(opponent_history,(id2 == opponent_id) & (bid2=="defect")))
+  
+  #calculate the total number of times opponent has decided to cooperate vs defect
+  total_coop = coop_bid1 + coop_bid2
+  total_defect = defect_bid1 + defect_bid2
+  total_rounds = total_coop + total_defect
+  
+  #calculate fractions (percentages) of cooperate vs defect
+  fraction_coop = total_coop / total_rounds
+  fraction_defect = total_defect / total_rounds
+  
+  #calculate coop:defect ratio (a score of higher than 1 indicates an agent that tends to be cooperative)
+  coop_defect_ratio = total_coop / total_defect
+  
+  #determine the number of times an opponent has previously cheated its co-player (i.e. opponent defects and co-player cooperates)
+  cheat1 = nrow(subset(opponent_history,((id1 == opponent_id) & (bid1=="defect") & (bid2=="cooperate"))))
+  cheat2 = nrow(subset(opponent_history,((id2 == opponent_id) & (bid2=="defect") & (bid1=="cooperate"))))
+  total_cheat = cheat1 + cheat2
+  
+  #calculate fraction of cheats with regards to total rounds played (the higher the fraction, the more likely the opponent will cheat us)
+  fraction_cheat = total_cheat / total_rounds
+  
+  #combine relevant statistics into a dataframe (for generating a structured output)
+  id <- c(opponent_id)
+  total_rounds <- c(total_rounds)
+  fraction_coop <- c(fraction_coop)
+  fraction_defect <- c(fraction_defect)
+  coop_defect_ratio <- c(coop_defect_ratio)
+  fraction_cheat <- c(fraction_cheat)
+  output = data.frame(id, total_rounds, fraction_coop, fraction_defect, fraction_cheat) 
+  
+  #use output to determine the final bid. Open to multiple options. Analyze if time
+  if (output$fraction_coop > 0.5){
+    bid = 'cooperate'
+  } else{
+    bid = 'defect'
+  }
+  return(bid)
+}
+```
+
+This function extracts data concerning the tournament history of an opposing agent. Subsequently, our agent identifies the number of rounds, cooperating-, defecting- and cheating- (defecting while other cooperates) actions of the opponent in question. Accordingly, fractions of all three actions are calculated and are summarized in a dataframe.
+
+With help of the statistics in the computed dataframe our agent can formulate its bid. Multiple decision strategies are possible using these statistics, however our agent is currently programmed to solely focus on the cooperating behavior of the opposing Agent. If the cooperating actions of this specific opponent are greater that 50% in the current tournament, we will also cooperate.
+
+Ultimately, the full strategy of the get_bid() function returns a bid which will conclude the strategy of our Agent.
